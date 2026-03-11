@@ -1,4 +1,6 @@
 // index.js
+import { webcrypto } from "crypto";
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
 import baileys from "@whiskeysockets/baileys";
 import pino from "pino";
 import dotenv from "dotenv";
