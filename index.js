@@ -219,10 +219,26 @@ function applyWarning(sender, violations) {
 }
 
 // ─────────────────────────────────────────────
+// 🛡️ SAFE SEND — retries up to 3x with delay
+// ─────────────────────────────────────────────
+async function safeSend(sock, jid, content, label = "message") {
+  for (let i = 1; i <= 3; i++) {
+    try {
+      await sock.sendMessage(jid, content);
+      return true;
+    } catch (e) {
+      console.log(`⚠️  Send attempt ${i}/3 failed (${e.message})`);
+      if (i < 3) await new Promise(r => setTimeout(r, 3000 * i));
+    }
+  }
+  console.log(`❌ Could not send ${label} after 3 attempts`);
+  return false;
+}
+
+// ─────────────────────────────────────────────
 // 🗑️ SAFE DELETE — never crashes the bot
 // ─────────────────────────────────────────────
 async function safeDelete(sock, chatId, msgKey, senderName) {
-  // Wait a moment for session to establish then try twice
   for (let i = 1; i <= 2; i++) {
     try {
       await sock.sendMessage(chatId, { delete: msgKey });
@@ -230,9 +246,9 @@ async function safeDelete(sock, chatId, msgKey, senderName) {
       return true;
     } catch (e) {
       if (i === 1) {
-        await new Promise(r => setTimeout(r, 3000)); // wait 3s, try again
+        await new Promise(r => setTimeout(r, 3000));
       } else {
-        console.log(`⚠️  Delete skipped (${e.message}) — warning still sent`);
+        console.log(`⚠️  Delete skipped (${e.message})`);
       }
     }
   }
@@ -325,25 +341,25 @@ async function startBot() {
 
           if (result.action === "warn") {
             console.log(`⚠️  WARN #${result.used} — ${senderName} — ${reason}`);
-            await sock.sendMessage(TARGET_GROUP_ID, {
+            await safeSend(sock, TARGET_GROUP_ID, {
               text:
                 `🗑️ *Message deleted.*\n\n` +
                 `⚠️ *Warning #${result.used} for @${senderNum}*\n` +
                 `📌 Violation: ${reason}\n` +
                 `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
                 `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
-            });
+            }, "warning");
           }
 
           if (result.action === "ban") {
             console.log(`⛔ BAN — ${senderName} — ${reason}`);
-            await sock.sendMessage(TARGET_GROUP_ID, {
+            await safeSend(sock, TARGET_GROUP_ID, {
               text:
                 `🗑️ *Message deleted.*\n\n` +
                 `⛔ *@${senderNum} has been removed.*\n` +
                 `📌 Final violation: ${reason}\n` +
                 `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
-            });
+            }, "ban notice");
             try {
               await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
               console.log(`✅ Removed ${senderName}`);
