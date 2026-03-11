@@ -5,19 +5,54 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  downloadMediaMessage,
 } = baileys;
 import pino from "pino";
 import dotenv from "dotenv";
+import http from "http";
+import qrcode from "qrcode";
 dotenv.config();
 
 console.log("🤖 Starting EXTREME MOD BOT...");
 
 // ─────────────────────────────────────────────
-// 🎯 CONFIG (set in .env or Railway variables)
+// 🎯 CONFIG
 // ─────────────────────────────────────────────
 const TARGET_GROUP_ID = process.env.GROUP_ID || "120363425771650708@g.us";
 const MAX_WARNINGS    = 3;
+
+// ─────────────────────────────────────────────
+// 🌐 WEB SERVER — keeps Railway alive + shows QR
+// Open your Railway URL in the browser to scan QR
+// ─────────────────────────────────────────────
+let currentQR  = null;
+let botStatus  = "starting";
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  if (botStatus === "connected") {
+    res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0a;color:#fff">
+      <h1>✅ Bot Connected!</h1>
+      <p>Monitoring group: <code>${TARGET_GROUP_ID}</code></p>
+      <p>Max warnings before ban: <b>${MAX_WARNINGS}</b></p>
+    </body></html>`);
+  } else if (currentQR) {
+    const qrImage = await qrcode.toDataURL(currentQR);
+    res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0a;color:#fff">
+      <h1>📱 Scan to connect WhatsApp</h1>
+      <p>WhatsApp → Linked Devices → Link a Device</p>
+      <img src="${qrImage}" style="width:280px;height:280px;border-radius:12px"/>
+      <p><small>Refresh this page if the QR expires</small></p>
+    </body></html>`);
+  } else {
+    res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0a;color:#fff">
+      <h1>⏳ Starting up...</h1>
+      <p>Refresh in a few seconds to see the QR code.</p>
+    </body></html>`);
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🌐 Web server on port ${PORT} — open your Railway URL to scan QR`));
 
 // ─────────────────────────────────────────────
 // 🚫 RULE 1 — No Swearing (75 keywords)
@@ -145,14 +180,10 @@ const filterWords = [
   "heavily edited","fake photo","filtered photo","photo edit","heavy filter",
 ];
 
-// ─────────────────────────────────────────────
-// 🖼️ INAPPROPRIATE IMAGE KEYWORDS
-// (checked against image captions)
-// ─────────────────────────────────────────────
 const inappropriateImageKeywords = [
   ...nudeWords,
-  "nsfw","not safe for work","18+","explicit","adult","lewd","hentai","ecchi",
-  "gore","graphic","disturbing","dead body","bloody","violence","self harm",
+  "nsfw","not safe for work","explicit","adult","lewd","hentai","ecchi",
+  "gore","graphic","disturbing","dead body","violence","self harm",
 ];
 
 // ─────────────────────────────────────────────
@@ -160,9 +191,6 @@ const inappropriateImageKeywords = [
 // ─────────────────────────────────────────────
 const userWarnings = {};
 
-// ─────────────────────────────────────────────
-// 📋 RULES TEXT
-// ─────────────────────────────────────────────
 const RULES = `📋 *Group Rules:*
 1️⃣  No swearing
 2️⃣  No nude content
@@ -174,10 +202,10 @@ const RULES = `📋 *Group Rules:*
 8️⃣  No clickbaiting
 9️⃣  No Snapchat
 🔟  No filters
-🖼️  No inappropriate images or GIFs`;
+🖼️  No inappropriate images/GIFs`;
 
 // ─────────────────────────────────────────────
-// 🔍 TEXT MESSAGE CHECKER
+// 🔍 CHECKERS
 // ─────────────────────────────────────────────
 function checkText(msgText) {
   const text = msgText.toLowerCase();
@@ -203,7 +231,6 @@ function checkText(msgText) {
     }
   }
 
-  // No Face Emoji rule
   for (const emoji of bannedEmojis) {
     if (msgText.includes(emoji)) {
       violations.push(`face emoji: ${emoji}`);
@@ -211,33 +238,22 @@ function checkText(msgText) {
     }
   }
 
-  // No Fancy Keyboards rule
-  if (/[𝒜-𝓏𝔄-𝔷𝕬-𝖟]/u.test(msgText))    violations.push("fancy keyboard text");
-  if (/\u0336/.test(msgText))              violations.push("strikethrough text");
-  if (/[\uD83C][\uDD70-\uDD8A]/u.test(msgText)) violations.push("circled letter text");
+  if (/[𝒜-𝓏𝔄-𝔷𝕬-𝖟]/u.test(msgText))         violations.push("fancy keyboard text");
+  if (/\u0336/.test(msgText))                    violations.push("strikethrough text");
+  if (/[\uD83C][\uDD70-\uDD8A]/u.test(msgText))  violations.push("circled letter text");
 
   return violations;
 }
 
-// ─────────────────────────────────────────────
-// 🖼️ IMAGE / GIF CHECKER
-// ─────────────────────────────────────────────
 function checkMedia(msg) {
   const violations = [];
   const m = msg.message;
-
   const isImage   = !!m.imageMessage;
   const isGif     = !!m.videoMessage?.gifPlayback;
   const isSticker = !!m.stickerMessage;
   const isVideo   = !!m.videoMessage && !m.videoMessage.gifPlayback;
 
-  // Check caption of image/video for banned words
-  const caption = (
-    m.imageMessage?.caption ||
-    m.videoMessage?.caption ||
-    ""
-  ).toLowerCase();
-
+  const caption = (m.imageMessage?.caption || m.videoMessage?.caption || "").toLowerCase();
   if (caption) {
     for (const word of inappropriateImageKeywords) {
       if (caption.includes(word.toLowerCase())) {
@@ -247,24 +263,19 @@ function checkMedia(msg) {
     }
   }
 
-  // Flag media type
-  if (isImage)   violations.push("image sent (auto-deleted for safety)");
-  if (isGif)     violations.push("GIF sent (auto-deleted for safety)");
-  if (isSticker) violations.push("sticker sent (auto-deleted for safety)");
-  if (isVideo)   violations.push("video sent (auto-deleted for safety)");
+  if (isImage)   violations.push("image sent (auto-deleted)");
+  if (isGif)     violations.push("GIF sent (auto-deleted)");
+  if (isSticker) violations.push("sticker sent (auto-deleted)");
+  if (isVideo)   violations.push("video sent (auto-deleted)");
 
   return violations;
 }
 
-// ─────────────────────────────────────────────
-// ⚠️ APPLY WARNING / BAN
-// ─────────────────────────────────────────────
 function applyWarning(sender, violations) {
   if (!userWarnings[sender]) userWarnings[sender] = 0;
   userWarnings[sender]++;
   const warningsUsed = userWarnings[sender];
   const warningsLeft = MAX_WARNINGS - warningsUsed;
-
   if (warningsLeft > 0) {
     return { action: "warn", violations, warningsUsed, warningsLeft };
   } else {
@@ -281,7 +292,7 @@ async function startBot() {
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
+    printQRInTerminal: false,
     logger: pino({ level: "silent" }),
     version,
     browser: ["Windows", "Chrome", "107.0.5304.107"],
@@ -291,25 +302,32 @@ async function startBot() {
 
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
-    if (qr) console.log("📱 Scan the QR code above to log in.");
+
+    if (qr) {
+      currentQR = qr;
+      botStatus = "waiting_qr";
+      console.log("📱 QR ready — open your Railway URL in a browser to scan it!");
+    }
+
     if (connection === "open") {
+      currentQR = null;
+      botStatus = "connected";
       console.log("✅ Bot connected to WhatsApp!");
       console.log(`🎯 Monitoring group: ${TARGET_GROUP_ID}`);
       console.log(`⚠️  Warnings before ban: ${MAX_WARNINGS}`);
     }
+
     if (connection === "close") {
+      botStatus = "reconnecting";
       const code = lastDisconnect?.error?.output?.statusCode;
       console.log(`❌ Connection closed (code ${code})`);
       if (code !== DisconnectReason.loggedOut) {
         console.log("🔄 Reconnecting...");
-        startBot();
+        setTimeout(startBot, 3000);
       }
     }
   });
 
-  // ─────────────────────────────────────────────
-  // 💬 MESSAGE HANDLER
-  // ─────────────────────────────────────────────
   sock.ev.on("messages.upsert", async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
@@ -322,33 +340,15 @@ async function startBot() {
       const senderNum  = sender.split("@")[0];
       const m          = msg.message;
 
-      // ── Detect message type ──
-      const textContent =
-        m.conversation ||
-        m.extendedTextMessage?.text ||
-        "";
-
-      const isMedia =
-        !!m.imageMessage ||
-        !!m.videoMessage ||
-        !!m.stickerMessage ||
-        !!m.gifMessage;
+      const textContent = m.conversation || m.extendedTextMessage?.text || "";
+      const isMedia = !!m.imageMessage || !!m.videoMessage || !!m.stickerMessage;
 
       let violations = [];
-
-      // Check text
-      if (textContent) {
-        violations = checkText(textContent);
-      }
-
-      // Check images / GIFs / stickers / videos
-      if (isMedia) {
-        violations = [...violations, ...checkMedia(msg)];
-      }
-
+      if (textContent) violations = checkText(textContent);
+      if (isMedia)     violations = [...violations, ...checkMedia(msg)];
       if (violations.length === 0) continue;
 
-      // ── DELETE THE MESSAGE FIRST ──
+      // Delete the message first
       try {
         await sock.sendMessage(chatId, { delete: msg.key });
         console.log(`🗑️  Deleted message from ${senderName}`);
@@ -356,20 +356,18 @@ async function startBot() {
         console.error(`❌ Could not delete message:`, e.message);
       }
 
-      // ── Apply warning / ban ──
       const result = applyWarning(sender, violations);
       const reason = violations.join(", ");
 
       if (result.action === "warn") {
         console.log(`⚠️  [WARN #${result.warningsUsed}] ${senderName} | ${reason} | Left: ${result.warningsLeft}/${MAX_WARNINGS}`);
-
         await sock.sendMessage(TARGET_GROUP_ID, {
           text:
             `🗑️ *Message deleted.*\n\n` +
             `⚠️ *Warning #${result.warningsUsed} for @${senderNum}*\n` +
             `📌 Violation: ${reason}\n` +
             `🔢 Warnings: ${result.warningsUsed}/${MAX_WARNINGS}\n` +
-            `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` +
+            `❗ Removed at ${MAX_WARNINGS} warnings.\n\n` +
             RULES,
           mentions: [sender],
         });
@@ -377,7 +375,6 @@ async function startBot() {
 
       if (result.action === "ban") {
         console.log(`⛔ [BAN] ${senderName} | ${reason}`);
-
         await sock.sendMessage(TARGET_GROUP_ID, {
           text:
             `🗑️ *Message deleted.*\n\n` +
@@ -386,13 +383,11 @@ async function startBot() {
             `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
           mentions: [sender],
         });
-
         try {
           await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
           console.log(`✅ ${senderName} removed from group.`);
         } catch (e) {
           console.error(`❌ Could not remove ${senderName}:`, e.message);
-          console.log("   (Make sure the bot is a group admin!)");
         }
       }
     }
