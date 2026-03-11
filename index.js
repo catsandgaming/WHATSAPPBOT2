@@ -1,0 +1,400 @@
+// index.js
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  downloadMediaMessage,
+} from "@whiskeysockets/baileys";
+import pino from "pino";
+import dotenv from "dotenv";
+dotenv.config();
+
+console.log("🤖 Starting EXTREME MOD BOT...");
+
+// ─────────────────────────────────────────────
+// 🎯 CONFIG (set in .env or Railway variables)
+// ─────────────────────────────────────────────
+const TARGET_GROUP_ID = process.env.GROUP_ID || "120363425771650708@g.us";
+const MAX_WARNINGS    = 3;
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 1 — No Swearing (75 keywords)
+// ─────────────────────────────────────────────
+const swearWords = [
+  "fuck","f*ck","fuk","fvck","fucc","fuxk","fück","f u c k","feck","frick",
+  "shit","sh1t","sht","$hit","sh!t","shyt","shiit","shite","s h i t","shitt",
+  "bitch","b1tch","b!tch","bytch","biatch","btch","b*tch","biotch","bich","bítch",
+  "ass","a55","a**","@ss","arse","arsehole","asshole","asshat","dumbass","jackass",
+  "cunt","c*nt","cvnt","kunt","c u n t","cnt","cünt","bastard","bullshit","bollocks",
+  "dick","d1ck","d!ck","dik","dyck","cock","c0ck","cok","cocc","cocksucker",
+  "motherfucker","mofo","mf","nigger","nigga","n1gger","n-word","nigg","niggah","n1gga",
+  "wanker","twat","slut","whore","prick",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 2 — No Nude (75 keywords)
+// ─────────────────────────────────────────────
+const nudeWords = [
+  "nude","nudes","naked","nakd","n*de","n@ked","nudity","nudez","nudie","nudepic",
+  "porn","p0rn","pr0n","p*rn","porno","pornhub","xvideos","xhamster","pornsite","pornn",
+  "xxx","x x x","xxxx","xxxxx","18+","onlyfans","only fans","of link","onlyfan","onlyfanz",
+  "sex tape","sextape","sex vid","sex video","sexvid","sexting","sext","sexts","s3x","s*x",
+  "boobs","b00bs","b*obs","bewbs","titties","tits","t1ts","titt","titty","tittes",
+  "vagina","vag","v@gina","vajayjay","cooch","coochie","coochi","pussy","p*ssy","pussi",
+  "penis","p*nis","shaft","boner","erection","cock pic","dick pic","nude pic","naked photo","adult content",
+  "dildo","vibrator","anal","a**l","an@l","blowjob","bj","handjob","cumshot","cum shot",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 3 — No TVD (75 keywords)
+// ─────────────────────────────────────────────
+const tvdWords = [
+  "tvd","t.v.d","t v d","tvdlink","tvd link","tvd site","tvdsite","tvd url","tvd video","tvd vid",
+  "tvd stream","tvd watch","tvd live","tvd channel","tvd tv","tvd app","tvd download","tvd free","tvd hd","tvd online",
+  "tvdmovies","tvd hub","tvdhub","tvd4","tvd365","tvdmania","tvd world","tvdworld","tvd net","tvd.net",
+  "tvd.com","tvd.tv","tvd.link","tvd.site","tvdmovie","tvdstream","tvdlive","tvdwatch","tvdapp","tvddl",
+  "tvd dl","tvd show","tvd series","tvd episode","tvd cast","tvd full","tvd hd link","tvd free link","tvd watch link","tvd dl link",
+  "tvd123","tvd456","tvd789","tvd2","tvd3","tvdx","tvdz","tvdq","tvdplus","tvd+",
+  "tvdpro","tvdvip","tvdelite","tvdgold","tvdsilver","tvdbronze","tvdpremium","tvdbasic","tvdaccess","tvdpass",
+  "tvdcode","tvdkey","tvdtoken","tvdlogin","tvdsignup",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 4 — No Freya Skye (75 keywords)
+// ─────────────────────────────────────────────
+const freyaSkyeWords = [
+  "freya skye","freya_skye","freyaskye","freya.skye","freya-skye","freya skye content","freya skye link","freya skye video","freya skye nude","freya skye leaked",
+  "freya skye onlyfans","freya skye of","freya skye insta","freya skye snap","freya skye tiktok","freya skye twitter","freya skye x","freya skye pics","freya skye photo","freya skye ig",
+  "freyaskye1","freyaskye2","freyaskye3","freyaskyeof","freyaskyesnap","freya s","f skye","fskye","freyask","freya sk",
+  "freyasky","freyaskye_","_freyaskye","freya.s","skye freya","skyefreya","skye_freya","skye.freya","skye-freya","s.freya",
+  "f.skye","fr3ya","fr3ya skye","freya sky3","fr3ya sky3","frya skye","freya skye real","freya skye fake","freya skye hot","freya skye cute",
+  "freya skye acc","freya skye account","freya skye backup","freya skye new","freya skye official","freya skye page","freya skye profile","freya skye handle","freya skye dm","freya skye msg",
+  "freya skye fan","freya skye fans","freya skye fanpage","freya skye fan page","freya skye follow","freya skye sub","freya skye contact","freya skye info","freya skye where","freya skye found",
+  "freya skye back","freya skye here","freya skye check","freya skye look","freya skye see",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 5 — No Face Emoji (75 emojis)
+// ─────────────────────────────────────────────
+const bannedEmojis = [
+  "😀","😁","😂","😃","😄","😅","😆","😇","😈","😉",
+  "😊","😋","😌","😍","😎","😏","😐","😑","😒","😓",
+  "😔","😕","😖","😗","😘","😙","😚","😛","😜","😝",
+  "😞","😟","😠","😡","😢","😣","😤","😥","😦","😧",
+  "😨","😩","😪","😫","😬","😭","😮","😯","😰","😱",
+  "😲","😳","😴","😵","😶","😷","🥰","🥳","🥴","🥵",
+  "🥶","🥺","🤩","🤪","🤫","🤭","🤯","🤬","🤮","🤧",
+  "🤠","🤡","🤢","🥸","😸","😿","🙈","🙉","🙊","😻",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 7 — No Labubus (75 keywords)
+// ─────────────────────────────────────────────
+const labubuWords = [
+  "labubus","labubu","labubs","labu","l@bubus","labubus123","labubus1","labubus2","labubus3","labubusfan",
+  "labubu toy","labubu figure","labubu doll","labubu plush","labubu pop mart","labubu popmart","labubu blind box","labubu series","labubu limited","labubu rare",
+  "labubu drop","labubu release","labubu collab","labubu link","labubu buy","labubu sell","labubu trade","labubu swap","labubu cheap","labubu free",
+  "labubu price","labubu cost","labubu worth","labubu value","labubu fake","labubu real","labubu legit","labubu auth","labubu authentic","labubu og",
+  "labubu new","labubu latest","labubu 2024","labubu 2025","labubu sale","labubu shop","labubu store","labubu site","labubu url","labubu website",
+  "labubu order","labubu shipping","labubu delivery","labubu stock","labubu restock","labubu available","labubu sold","labubu gone","labubu last","labubu final",
+  "labubu pics","labubu photo","labubu pic","labubu image","labubu video","labubu vid","labubu unbox","labubu haul","labubu collection","labubu collector",
+  "labubu fan","labubu fans","labubu fanpage",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 8 — No Clickbaiting (75 keywords)
+// ─────────────────────────────────────────────
+const clickbaitWords = [
+  "click here","read more","clickbait","click now","tap here","tap now","click link","link below","link in bio","link in comments",
+  "swipe up","swipe now","watch now","watch this","must watch","must see","must read","you wont believe","you won't believe","unbelievable",
+  "shocking","mind blowing","mind-blowing","omg look","omg watch","omg see","this is insane","this is crazy","gone wrong","gone viral",
+  "viral now","trending now","everyone is talking","nobody talks about","secret revealed","hidden truth","exposed","they don't want you","banned video","deleted video",
+  "limited time","limited offer","act now","don't miss","last chance","final chance","only today","expires soon","offer ends","sale ends",
+  "free gift","win now","you won","you've won","claim now","claim your","get free","free access","free money","free robux",
+  "100% free","totally free","no cost","at no cost","subscribe now","follow now","like now","share now","repost now","forward this",
+  "pass this on","send to everyone","tell your friends","spread the word","breaking news","urgent","alert","warning message","important notice","official notice",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 9 — No Snapchat (75 keywords)
+// ─────────────────────────────────────────────
+const snapchatWords = [
+  "snapchat","snap chat","snpchat","snapcht","s n a p","sn@p","$nap","snapchat link","snap link","snapchat url",
+  "snap url","snapchat id","snap id","snapchat user","snap user","snapchat name","snap name","snapchat acc","snap acc","snapchat account",
+  "snap account","snapchat handle","snap handle","snapchat add","snap add","add on snap","add me on snap","add my snap","my snap is","my snapchat is",
+  "heres my snap","here's my snap","dm on snap","dm me snap","snap me","snapchat me","message on snap","snapchat streaks","snap streaks","snap score",
+  "snapchat score","snap streak","snapchat story","snap story","snap stories","snapchat stories","snapchat post","snap post","snapchat pic","snap pic",
+  "snapchat photo","snap photo","snapchat video","snap video","snap vid","snapchat vid","snapchat filter","snap filter","snapchat lens","snap lens",
+  "snapchat map","snap map","snapchat spotlight","snap spotlight","snapchat discover","snap discover","snapchat premium","snap premium","snapchat plus","snap plus",
+  "snapchat+","snap+","snapcode","snap code","sc name","sc user",
+];
+
+// ─────────────────────────────────────────────
+// 🚫 RULE 10 — No Filters (75 keywords)
+// ─────────────────────────────────────────────
+const filterWords = [
+  "filter","filters","photo filter","pic filter","image filter","camera filter","face filter","beauty filter","skin filter","light filter",
+  "vsco","vsco filter","vsco edit","vsco preset","vsco cam","vscocam","vsco app","vsco link","vsco feed","vsco grid",
+  "lightroom preset","lr preset","lightroom filter","lr filter","lightroom edit","lr edit","preset","presets","editing preset","photo preset",
+  "facetune","face tune","faceapp","face app","meitu","snow app","b612","ulike","airbrush app","perfect365",
+  "airbrush","airbrush filter","smooth filter","glow filter","blur filter","bokeh filter","hdr filter","vintage filter","retro filter","film filter",
+  "instagram filter","ig filter","tiktok filter","snap filter","facebook filter","fb filter","reels filter","story filter","feed filter","reel filter",
+  "aesthetic filter","tumblr filter","dark filter","warm filter","cool filter","cold filter","sunny filter","moody filter","faded filter","edited photo",
+  "heavily edited","fake photo","filtered photo","photo edit","heavy filter",
+];
+
+// ─────────────────────────────────────────────
+// 🖼️ INAPPROPRIATE IMAGE KEYWORDS
+// (checked against image captions)
+// ─────────────────────────────────────────────
+const inappropriateImageKeywords = [
+  ...nudeWords,
+  "nsfw","not safe for work","18+","explicit","adult","lewd","hentai","ecchi",
+  "gore","graphic","disturbing","dead body","bloody","violence","self harm",
+];
+
+// ─────────────────────────────────────────────
+// ⚠️ WARNING TRACKER
+// ─────────────────────────────────────────────
+const userWarnings = {};
+
+// ─────────────────────────────────────────────
+// 📋 RULES TEXT
+// ─────────────────────────────────────────────
+const RULES = `📋 *Group Rules:*
+1️⃣  No swearing
+2️⃣  No nude content
+3️⃣  No TVD links
+4️⃣  No Freya Skye
+5️⃣  No face emojis
+6️⃣  No fancy keyboards
+7️⃣  No Labubus
+8️⃣  No clickbaiting
+9️⃣  No Snapchat
+🔟  No filters
+🖼️  No inappropriate images or GIFs`;
+
+// ─────────────────────────────────────────────
+// 🔍 TEXT MESSAGE CHECKER
+// ─────────────────────────────────────────────
+function checkText(msgText) {
+  const text = msgText.toLowerCase();
+  const violations = [];
+
+  const checks = [
+    { list: swearWords,     label: "swearing" },
+    { list: nudeWords,      label: "nude content" },
+    { list: tvdWords,       label: "TVD link" },
+    { list: freyaSkyeWords, label: "Freya Skye" },
+    { list: labubuWords,    label: "Labubus" },
+    { list: clickbaitWords, label: "clickbait" },
+    { list: snapchatWords,  label: "Snapchat" },
+    { list: filterWords,    label: "filters" },
+  ];
+
+  for (const { list, label } of checks) {
+    for (const word of list) {
+      if (text.includes(word.toLowerCase())) {
+        violations.push(`${label}: "${word}"`);
+        break;
+      }
+    }
+  }
+
+  // No Face Emoji rule
+  for (const emoji of bannedEmojis) {
+    if (msgText.includes(emoji)) {
+      violations.push(`face emoji: ${emoji}`);
+      break;
+    }
+  }
+
+  // No Fancy Keyboards rule
+  if (/[𝒜-𝓏𝔄-𝔷𝕬-𝖟]/u.test(msgText))    violations.push("fancy keyboard text");
+  if (/\u0336/.test(msgText))              violations.push("strikethrough text");
+  if (/[\uD83C][\uDD70-\uDD8A]/u.test(msgText)) violations.push("circled letter text");
+
+  return violations;
+}
+
+// ─────────────────────────────────────────────
+// 🖼️ IMAGE / GIF CHECKER
+// ─────────────────────────────────────────────
+function checkMedia(msg) {
+  const violations = [];
+  const m = msg.message;
+
+  const isImage   = !!m.imageMessage;
+  const isGif     = !!m.videoMessage?.gifPlayback;
+  const isSticker = !!m.stickerMessage;
+  const isVideo   = !!m.videoMessage && !m.videoMessage.gifPlayback;
+
+  // Check caption of image/video for banned words
+  const caption = (
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    ""
+  ).toLowerCase();
+
+  if (caption) {
+    for (const word of inappropriateImageKeywords) {
+      if (caption.includes(word.toLowerCase())) {
+        violations.push(`inappropriate caption: "${word}"`);
+        break;
+      }
+    }
+  }
+
+  // Flag media type
+  if (isImage)   violations.push("image sent (auto-deleted for safety)");
+  if (isGif)     violations.push("GIF sent (auto-deleted for safety)");
+  if (isSticker) violations.push("sticker sent (auto-deleted for safety)");
+  if (isVideo)   violations.push("video sent (auto-deleted for safety)");
+
+  return violations;
+}
+
+// ─────────────────────────────────────────────
+// ⚠️ APPLY WARNING / BAN
+// ─────────────────────────────────────────────
+function applyWarning(sender, violations) {
+  if (!userWarnings[sender]) userWarnings[sender] = 0;
+  userWarnings[sender]++;
+  const warningsUsed = userWarnings[sender];
+  const warningsLeft = MAX_WARNINGS - warningsUsed;
+
+  if (warningsLeft > 0) {
+    return { action: "warn", violations, warningsUsed, warningsLeft };
+  } else {
+    return { action: "ban", violations, warningsUsed };
+  }
+}
+
+// ─────────────────────────────────────────────
+// 🤖 BOT STARTUP
+// ─────────────────────────────────────────────
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+  const { version } = await fetchLatestBaileysVersion();
+
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+    logger: pino({ level: "silent" }),
+    version,
+    browser: ["Windows", "Chrome", "107.0.5304.107"],
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (qr) console.log("📱 Scan the QR code above to log in.");
+    if (connection === "open") {
+      console.log("✅ Bot connected to WhatsApp!");
+      console.log(`🎯 Monitoring group: ${TARGET_GROUP_ID}`);
+      console.log(`⚠️  Warnings before ban: ${MAX_WARNINGS}`);
+    }
+    if (connection === "close") {
+      const code = lastDisconnect?.error?.output?.statusCode;
+      console.log(`❌ Connection closed (code ${code})`);
+      if (code !== DisconnectReason.loggedOut) {
+        console.log("🔄 Reconnecting...");
+        startBot();
+      }
+    }
+  });
+
+  // ─────────────────────────────────────────────
+  // 💬 MESSAGE HANDLER
+  // ─────────────────────────────────────────────
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    for (const msg of messages) {
+      if (!msg.message || msg.key.fromMe) continue;
+
+      const chatId = msg.key.remoteJid;
+      if (chatId !== TARGET_GROUP_ID) continue;
+
+      const sender     = msg.key.participant || msg.key.remoteJid;
+      const senderName = msg.pushName || sender;
+      const senderNum  = sender.split("@")[0];
+      const m          = msg.message;
+
+      // ── Detect message type ──
+      const textContent =
+        m.conversation ||
+        m.extendedTextMessage?.text ||
+        "";
+
+      const isMedia =
+        !!m.imageMessage ||
+        !!m.videoMessage ||
+        !!m.stickerMessage ||
+        !!m.gifMessage;
+
+      let violations = [];
+
+      // Check text
+      if (textContent) {
+        violations = checkText(textContent);
+      }
+
+      // Check images / GIFs / stickers / videos
+      if (isMedia) {
+        violations = [...violations, ...checkMedia(msg)];
+      }
+
+      if (violations.length === 0) continue;
+
+      // ── DELETE THE MESSAGE FIRST ──
+      try {
+        await sock.sendMessage(chatId, { delete: msg.key });
+        console.log(`🗑️  Deleted message from ${senderName}`);
+      } catch (e) {
+        console.error(`❌ Could not delete message:`, e.message);
+      }
+
+      // ── Apply warning / ban ──
+      const result = applyWarning(sender, violations);
+      const reason = violations.join(", ");
+
+      if (result.action === "warn") {
+        console.log(`⚠️  [WARN #${result.warningsUsed}] ${senderName} | ${reason} | Left: ${result.warningsLeft}/${MAX_WARNINGS}`);
+
+        await sock.sendMessage(TARGET_GROUP_ID, {
+          text:
+            `🗑️ *Message deleted.*\n\n` +
+            `⚠️ *Warning #${result.warningsUsed} for @${senderNum}*\n` +
+            `📌 Violation: ${reason}\n` +
+            `🔢 Warnings: ${result.warningsUsed}/${MAX_WARNINGS}\n` +
+            `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` +
+            RULES,
+          mentions: [sender],
+        });
+      }
+
+      if (result.action === "ban") {
+        console.log(`⛔ [BAN] ${senderName} | ${reason}`);
+
+        await sock.sendMessage(TARGET_GROUP_ID, {
+          text:
+            `🗑️ *Message deleted.*\n\n` +
+            `⛔ *@${senderNum} has been removed from the group.*\n` +
+            `📌 Final violation: ${reason}\n` +
+            `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
+          mentions: [sender],
+        });
+
+        try {
+          await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
+          console.log(`✅ ${senderName} removed from group.`);
+        } catch (e) {
+          console.error(`❌ Could not remove ${senderName}:`, e.message);
+          console.log("   (Make sure the bot is a group admin!)");
+        }
+      }
+    }
+  });
+}
+
+startBot();
