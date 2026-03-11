@@ -332,7 +332,6 @@ async function startBot() {
                 `📌 Violation: ${reason}\n` +
                 `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
                 `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
-              mentions: [sender],
             });
           }
 
@@ -344,7 +343,6 @@ async function startBot() {
                 `⛔ *@${senderNum} has been removed.*\n` +
                 `📌 Final violation: ${reason}\n` +
                 `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
-              mentions: [sender],
             });
             try {
               await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
