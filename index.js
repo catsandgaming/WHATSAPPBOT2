@@ -261,6 +261,15 @@ async function safeDelete(sock, chatId, msgKey, senderName) {
 // ─────────────────────────────────────────────
 async function startBot() {
   try {
+    // If CLEAR_AUTH=true, wipe corrupted session and start fresh
+    if (process.env.CLEAR_AUTH === "true") {
+      const { rmSync, existsSync } = await import("fs");
+      if (existsSync("auth_info")) {
+        rmSync("auth_info", { recursive: true, force: true });
+        console.log("🗑️  Cleared auth_info — fresh QR scan required");
+      }
+    }
+
     botStatus = "loading auth...";
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
     console.log("✅ Auth loaded. Has creds:", !!state.creds?.me);
