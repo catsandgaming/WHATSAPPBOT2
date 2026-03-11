@@ -298,24 +298,8 @@ async function startBot() {
         currentQR = null;
         lastError = null;
         isReady = false;
-        botStatus = "connected — warming up (30s)...";
-        console.log("✅ Connected! Waiting 30s for sessions to sync...");
-        // Pre-establish Signal sessions with all group members
-        setTimeout(async () => {
-          try {
-            console.log("🔑 Fetching group participants to establish sessions...");
-            const meta = await sock.groupMetadata(TARGET_GROUP_ID);
-            const participants = meta.participants.map(p => p.id);
-            console.log(`👥 Found ${participants.length} participants, asserting sessions...`);
-            await sock.assertSessions(participants, true);
-            console.log("✅ Sessions established! Bot is ready.");
-          } catch (e) {
-            console.log("⚠️  Session pre-establish failed:", e.message, "— will try anyway");
-          }
-          isReady = true;
-          botStatus = "connected";
-          console.log("✅ Bot is now ready to moderate messages!");
-        }, 10000);
+        botStatus = "connected — syncing...";
+        console.log("✅ Connected! Waiting for WhatsApp to finish syncing...");
       }
       if (connection === "close") {
         isReady = false;
@@ -331,6 +315,24 @@ async function startBot() {
         }
       }
     });
+
+    // Fire once WhatsApp has fully synced — safe to send messages after this
+    sock.ev.on("messaging-history.set", () => {
+      if (!isReady) {
+        isReady = true;
+        botStatus = "connected";
+        console.log("✅ WhatsApp sync complete — bot is ready to moderate!");
+      }
+    });
+
+    // Fallback: if messaging-history.set never fires, go ready after 60s
+    setTimeout(() => {
+      if (!isReady) {
+        isReady = true;
+        botStatus = "connected (fallback ready)";
+        console.log("✅ Fallback: bot marked ready after 60s");
+      }
+    }, 60000);
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
       for (const msg of messages) {
