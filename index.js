@@ -1,10 +1,12 @@
 // index.js
-import makeWASocket, {
+import baileys from "@whiskeysockets/baileys";
+const {
+  default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
-} from "@whiskeysockets/baileys";
+} = baileys;
 import pino from "pino";
 import dotenv from "dotenv";
 dotenv.config();
