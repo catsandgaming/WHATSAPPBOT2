@@ -1,19 +1,21 @@
 // index.js
 import baileys from "@whiskeysockets/baileys";
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-} = baileys;
 import pino from "pino";
 import dotenv from "dotenv";
 import http from "http";
 import qrcode from "qrcode";
+
 dotenv.config();
 
 console.log("🤖 Starting EXTREME MOD BOT...");
+console.log("📦 Node version:", process.version);
+
+// Pull what we need from baileys
+const makeWASocket        = baileys.default;
+const useMultiFileAuthState = baileys.useMultiFileAuthState;
+const DisconnectReason    = baileys.DisconnectReason;
+
+console.log("✅ Baileys imported. makeWASocket type:", typeof makeWASocket);
 
 // ─────────────────────────────────────────────
 // 🎯 CONFIG
@@ -22,46 +24,43 @@ const TARGET_GROUP_ID = process.env.GROUP_ID || "120363425771650708@g.us";
 const MAX_WARNINGS    = 3;
 
 // ─────────────────────────────────────────────
-// 🌐 WEB SERVER — keeps Railway alive + shows QR
+// 🌐 WEB SERVER
 // ─────────────────────────────────────────────
 let currentQR = null;
 let botStatus = "starting";
+let lastError = null;
 
 const server = http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "text/html");
   try {
     if (botStatus === "connected") {
       res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
-        <h1>✅ Bot is connected and running!</h1>
-        <p>Monitoring: <code>${TARGET_GROUP_ID}</code></p>
-        <p>Max warnings: <b>${MAX_WARNINGS}</b></p>
+        <h1>✅ Bot Connected!</h1><p>Monitoring: <code>${TARGET_GROUP_ID}</code></p>
       </body></html>`);
     } else if (currentQR) {
       const qrImage = await qrcode.toDataURL(currentQR);
       res.end(`<html><head><meta http-equiv="refresh" content="30"/></head>
         <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
-        <h1>📱 Scan this QR code in WhatsApp</h1>
-        <p>WhatsApp → ⋮ Menu → Linked Devices → Link a Device</p>
-        <img src="${qrImage}" style="width:280px;height:280px;border-radius:12px;background:#fff;padding:10px"/>
-        <p><small>Page auto-refreshes every 30s. Refresh manually if QR expires.</small></p>
+        <h1>📱 Scan QR Code in WhatsApp</h1>
+        <p>WhatsApp → ⋮ → Linked Devices → Link a Device</p>
+        <img src="${qrImage}" style="width:280px;height:280px;background:#fff;padding:10px;border-radius:8px"/>
+        <p><small>Auto-refreshes every 30s</small></p>
       </body></html>`);
     } else {
-      res.end(`<html><head><meta http-equiv="refresh" content="3"/></head>
+      res.end(`<html><head><meta http-equiv="refresh" content="4"/></head>
         <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
-        <h1>⏳ Starting up...</h1>
-        <p>Status: <b>${botStatus}</b></p>
-        <p>Auto-refreshing in 3 seconds...</p>
+        <h1>⏳ ${botStatus}</h1>
+        ${lastError ? `<p style="color:red">Last error: ${lastError}</p>` : ""}
+        <p>Auto-refreshing...</p>
       </body></html>`);
     }
   } catch(e) {
-    res.end(`<html><body><h1>Error: ${e.message}</h1></body></html>`);
+    res.end(`<html><body><h1 style="color:red">Server error: ${e.message}</h1></body></html>`);
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🌐 Web server on port ${PORT}`);
-});
+server.listen(PORT, "0.0.0.0", () => console.log(`🌐 Web server on port ${PORT}`));
 
 // ─────────────────────────────────────────────
 // 🚫 BANNED WORD LISTS
@@ -107,14 +106,10 @@ const freyaSkyeWords = [
   "freya skye back","freya skye here","freya skye check","freya skye look","freya skye see",
 ];
 const bannedEmojis = [
-  "😀","😁","😂","😃","😄","😅","😆","😇","😈","😉",
-  "😊","😋","😌","😍","😎","😏","😐","😑","😒","😓",
-  "😔","😕","😖","😗","😘","😙","😚","😛","😜","😝",
-  "😞","😟","😠","😡","😢","😣","😤","😥","😦","😧",
-  "😨","😩","😪","😫","😬","😭","😮","😯","😰","😱",
-  "😲","😳","😴","😵","😶","😷","🥰","🥳","🥴","🥵",
-  "🥶","🥺","🤩","🤪","🤫","🤭","🤯","🤬","🤮","🤧",
-  "🤠","🤡","🤢","🥸","😸","😿","🙈","🙉","🙊","😻",
+  "😀","😁","😂","😃","😄","😅","😆","😇","😈","😉","😊","😋","😌","😍","😎","😏","😐","😑","😒","😓",
+  "😔","😕","😖","😗","😘","😙","😚","😛","😜","😝","😞","😟","😠","😡","😢","😣","😤","😥","😦","😧",
+  "😨","😩","😪","😫","😬","😭","😮","😯","😰","😱","😲","😳","😴","😵","😶","😷","🥰","🥳","🥴","🥵",
+  "🥶","🥺","🤩","🤪","🤫","🤭","🤯","🤬","🤮","🤧","🤠","🤡","🤢","🥸","😸","😿","🙈","🙉","🙊","😻",
 ];
 const labubuWords = [
   "labubus","labubu","labubs","labu","l@bubus","labubus123","labubus1","labubus2","labubus3","labubusfan",
@@ -163,7 +158,6 @@ const inappropriateImageKeywords = [
 ];
 
 const userWarnings = {};
-
 const RULES = `📋 *Group Rules:*
 1️⃣  No swearing
 2️⃣  No nude content
@@ -192,10 +186,7 @@ function checkText(msgText) {
   ];
   for (const { list, label } of checks) {
     for (const word of list) {
-      if (text.includes(word.toLowerCase())) {
-        violations.push(`${label}: "${word}"`);
-        break;
-      }
+      if (text.includes(word.toLowerCase())) { violations.push(`${label}: "${word}"`); break; }
     }
   }
   for (const emoji of bannedEmojis) {
@@ -213,91 +204,89 @@ function checkMedia(msg) {
   const caption = (m.imageMessage?.caption || m.videoMessage?.caption || "").toLowerCase();
   if (caption) {
     for (const word of inappropriateImageKeywords) {
-      if (caption.includes(word.toLowerCase())) {
-        violations.push(`inappropriate caption: "${word}"`); break;
-      }
+      if (caption.includes(word.toLowerCase())) { violations.push(`bad caption: "${word}"`); break; }
     }
   }
-  if (m.imageMessage)                    violations.push("image sent (auto-deleted)");
-  if (m.videoMessage?.gifPlayback)       violations.push("GIF sent (auto-deleted)");
-  if (m.stickerMessage)                  violations.push("sticker sent (auto-deleted)");
-  if (m.videoMessage && !m.videoMessage.gifPlayback) violations.push("video sent (auto-deleted)");
+  if (m.imageMessage)                              violations.push("image (auto-deleted)");
+  if (m.videoMessage?.gifPlayback)                 violations.push("GIF (auto-deleted)");
+  if (m.stickerMessage)                            violations.push("sticker (auto-deleted)");
+  if (m.videoMessage && !m.videoMessage.gifPlayback) violations.push("video (auto-deleted)");
   return violations;
 }
 
 function applyWarning(sender, violations) {
   if (!userWarnings[sender]) userWarnings[sender] = 0;
   userWarnings[sender]++;
-  const warningsUsed = userWarnings[sender];
-  const warningsLeft = MAX_WARNINGS - warningsUsed;
-  return warningsLeft > 0
-    ? { action: "warn", violations, warningsUsed, warningsLeft }
-    : { action: "ban",  violations, warningsUsed };
+  const used = userWarnings[sender];
+  const left = MAX_WARNINGS - used;
+  return left > 0
+    ? { action: "warn", violations, used, left }
+    : { action: "ban",  violations, used };
 }
 
 // ─────────────────────────────────────────────
-// 🤖 BOT STARTUP
+// 🤖 BOT
 // ─────────────────────────────────────────────
 async function startBot() {
   try {
-    botStatus = "connecting";
+    botStatus = "loading auth...";
+    console.log("🔐 Loading auth state...");
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+    console.log("✅ Auth loaded. Has creds:", !!state.creds?.me);
 
-    // Use hardcoded version — avoids network fetch failing on Railway
-    let version = [2, 3000, 1015901307];
-    try {
-      const result = await fetchLatestBaileysVersion();
-      version = result.version;
-      console.log(`📦 Using WA version: ${version.join(".")}`);
-    } catch (e) {
-      console.log(`⚠️  Could not fetch WA version, using fallback: ${version.join(".")}`);
-    }
+    botStatus = "creating socket...";
+    console.log("🔌 Creating WhatsApp socket...");
 
     const sock = makeWASocket({
-      version,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
-      },
-      printQRInTerminal: false,
-      logger: pino({ level: "silent" }),
-      browser: ["Ubuntu", "Chrome", "20.0.04"],
-      connectTimeoutMs: 60000,
-      defaultQueryTimeoutMs: 60000,
-      keepAliveIntervalMs: 10000,
-      emitOwnEvents: false,
-      retryRequestDelayMs: 2000,
+      version: [2, 3000, 1015901307],
+      auth: state,
+      printQRInTerminal: true,
+      logger: pino({ level: "warn" }),  // warn so we see actual errors
+      browser: ["Mac OS", "Chrome", "121.0.6167.159"],
+      connectTimeoutMs: 30000,
+      keepAliveIntervalMs: 15000,
     });
+
+    console.log("✅ Socket created");
+    botStatus = "connecting to WhatsApp...";
 
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
+      console.log("📡 Connection update:", JSON.stringify({
+        connection: update.connection,
+        hasQR: !!update.qr,
+        errorCode: update.lastDisconnect?.error?.output?.statusCode,
+        errorMsg: update.lastDisconnect?.error?.message,
+      }));
+
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        currentQR  = qr;
-        botStatus  = "waiting_qr";
-        console.log("📱 QR ready — open your Railway public URL in browser to scan!");
+        currentQR = qr;
+        botStatus = "SCAN QR CODE ↑";
+        console.log("📱 QR ready! Open your Railway URL to scan.");
       }
 
       if (connection === "open") {
         currentQR = null;
         botStatus = "connected";
-        console.log("✅ Bot connected to WhatsApp!");
-        console.log(`🎯 Monitoring: ${TARGET_GROUP_ID}`);
+        lastError = null;
+        console.log("✅ Connected to WhatsApp! Monitoring:", TARGET_GROUP_ID);
       }
 
       if (connection === "close") {
         const code   = lastDisconnect?.error?.output?.statusCode;
-        const reason = lastDisconnect?.error?.message || "unknown";
-        console.log(`❌ Disconnected — code: ${code}, reason: ${reason}`);
+        const reason = lastDisconnect?.error?.message || "unknown reason";
+        lastError = `code ${code}: ${reason}`;
+        console.log(`❌ Closed — ${lastError}`);
 
         if (code === DisconnectReason.loggedOut) {
-          console.log("🚪 Logged out — delete auth_info folder and restart to re-scan QR.");
-          botStatus = "logged_out";
+          botStatus = "logged out — delete auth_info and redeploy";
+          console.log("🚪 Logged out. You must delete the auth_info folder and redeploy.");
         } else {
-          botStatus = "reconnecting";
-          console.log("🔄 Reconnecting in 5 seconds...");
+          botStatus = `reconnecting (${lastError})`;
+          console.log("🔄 Will reconnect in 5s...");
           setTimeout(startBot, 5000);
         }
       }
@@ -310,8 +299,8 @@ async function startBot() {
         if (chatId !== TARGET_GROUP_ID) continue;
 
         const sender     = msg.key.participant || msg.key.remoteJid;
-        const senderName = msg.pushName || sender;
         const senderNum  = sender.split("@")[0];
+        const senderName = msg.pushName || senderNum;
         const m          = msg.message;
 
         const textContent = m.conversation || m.extendedTextMessage?.text || "";
@@ -320,55 +309,56 @@ async function startBot() {
         let violations = [];
         if (textContent) violations = checkText(textContent);
         if (isMedia)     violations = [...violations, ...checkMedia(msg)];
-        if (violations.length === 0) continue;
+        if (!violations.length) continue;
 
         try {
           await sock.sendMessage(chatId, { delete: msg.key });
-          console.log(`🗑️  Deleted message from ${senderName}`);
+          console.log(`🗑️  Deleted msg from ${senderName}`);
         } catch (e) {
-          console.error(`❌ Delete failed: ${e.message}`);
+          console.error("❌ Delete failed:", e.message);
         }
 
         const result = applyWarning(sender, violations);
         const reason = violations.join(", ");
 
         if (result.action === "warn") {
-          console.log(`⚠️  [WARN #${result.warningsUsed}] ${senderName} | ${reason}`);
+          console.log(`⚠️  WARN #${result.used} — ${senderName} — ${reason}`);
           await sock.sendMessage(TARGET_GROUP_ID, {
             text:
               `🗑️ *Message deleted.*\n\n` +
-              `⚠️ *Warning #${result.warningsUsed} for @${senderNum}*\n` +
+              `⚠️ *Warning #${result.used} for @${senderNum}*\n` +
               `📌 Violation: ${reason}\n` +
-              `🔢 Warnings: ${result.warningsUsed}/${MAX_WARNINGS}\n` +
-              `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
+              `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
+              `❗ Removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
             mentions: [sender],
           });
         }
 
         if (result.action === "ban") {
-          console.log(`⛔ [BAN] ${senderName} | ${reason}`);
+          console.log(`⛔ BAN — ${senderName} — ${reason}`);
           await sock.sendMessage(TARGET_GROUP_ID, {
             text:
               `🗑️ *Message deleted.*\n\n` +
-              `⛔ *@${senderNum} has been removed from the group.*\n` +
+              `⛔ *@${senderNum} has been removed.*\n` +
               `📌 Final violation: ${reason}\n` +
               `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
             mentions: [sender],
           });
           try {
             await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
-            console.log(`✅ ${senderName} removed.`);
+            console.log(`✅ Removed ${senderName}`);
           } catch (e) {
-            console.error(`❌ Remove failed: ${e.message}`);
+            console.error("❌ Remove failed:", e.message);
           }
         }
       }
     });
 
   } catch (err) {
-    console.error("💥 startBot crashed:", err.message);
-    console.log("🔄 Restarting in 5 seconds...");
-    botStatus = "crashed";
+    lastError = err.message;
+    botStatus = `crashed: ${err.message}`;
+    console.error("💥 CRASH:", err);
+    console.log("🔄 Restarting in 5s...");
     setTimeout(startBot, 5000);
   }
 }
