@@ -239,12 +239,22 @@ async function startBot() {
     botStatus = "creating socket...";
     console.log("🔌 Creating WhatsApp socket...");
 
+    // Fetch latest WA version with fallback
+    let waVersion = [2, 3000, 1015901307];
+    try {
+      const { version } = await baileys.fetchLatestBaileysVersion();
+      waVersion = version;
+      console.log("📦 WA version:", waVersion.join("."));
+    } catch(e) {
+      console.log("⚠️  Using fallback WA version:", waVersion.join("."));
+    }
+
     const sock = makeWASocket({
-      version: [2, 3000, 1015901307],
+      version: waVersion,
       auth: state,
       printQRInTerminal: true,
       logger: pino({ level: "warn" }),  // warn so we see actual errors
-      browser: ["Mac OS", "Chrome", "121.0.6167.159"],
+      browser: baileys.Browsers.ubuntu("Chrome"),
       connectTimeoutMs: 30000,
       keepAliveIntervalMs: 15000,
     });
