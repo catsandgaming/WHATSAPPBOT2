@@ -300,11 +300,22 @@ async function startBot() {
         isReady = false;
         botStatus = "connected — warming up (30s)...";
         console.log("✅ Connected! Waiting 30s for sessions to sync...");
-        setTimeout(() => {
+        // Pre-establish Signal sessions with all group members
+        setTimeout(async () => {
+          try {
+            console.log("🔑 Fetching group participants to establish sessions...");
+            const meta = await sock.groupMetadata(TARGET_GROUP_ID);
+            const participants = meta.participants.map(p => p.id);
+            console.log(`👥 Found ${participants.length} participants, asserting sessions...`);
+            await sock.assertSessions(participants, true);
+            console.log("✅ Sessions established! Bot is ready.");
+          } catch (e) {
+            console.log("⚠️  Session pre-establish failed:", e.message, "— will try anyway");
+          }
           isReady = true;
           botStatus = "connected";
           console.log("✅ Bot is now ready to moderate messages!");
-        }, 30000);
+        }, 10000);
       }
       if (connection === "close") {
         isReady = false;
