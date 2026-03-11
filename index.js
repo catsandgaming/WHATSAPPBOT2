@@ -1,27 +1,26 @@
 // index.js
+
+// 🛡️ MUST BE FIRST — stops SessionError from killing the process
 import { webcrypto } from "crypto";
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
+
+process.on("uncaughtException",  (err) => console.error("⚠️ Uncaught:", err.message));
+process.on("unhandledRejection", (r)   => console.error("⚠️ Unhandled:", r?.message || r));
+
 import baileys from "@whiskeysockets/baileys";
 import pino from "pino";
 import dotenv from "dotenv";
 import http from "http";
 import qrcode from "qrcode";
-
 dotenv.config();
 
-console.log("🤖 Starting EXTREME MOD BOT...");
-console.log("📦 Node version:", process.version);
-
-// Pull what we need from baileys
-const makeWASocket        = baileys.default;
+const makeWASocket         = baileys.default;
 const useMultiFileAuthState = baileys.useMultiFileAuthState;
-const DisconnectReason    = baileys.DisconnectReason;
+const DisconnectReason      = baileys.DisconnectReason;
 
-console.log("✅ Baileys imported. makeWASocket type:", typeof makeWASocket);
+console.log("🤖 Starting EXTREME MOD BOT...");
+console.log("📦 Node:", process.version);
 
-// ─────────────────────────────────────────────
-// 🎯 CONFIG
-// ─────────────────────────────────────────────
 const TARGET_GROUP_ID = process.env.GROUP_ID || "120363425771650708@g.us";
 const MAX_WARNINGS    = 3;
 
@@ -32,40 +31,34 @@ let currentQR = null;
 let botStatus = "starting";
 let lastError = null;
 
-const server = http.createServer(async (req, res) => {
+http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "text/html");
+  const style = "font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff";
   try {
     if (botStatus === "connected") {
-      res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
-        <h1>✅ Bot Connected!</h1><p>Monitoring: <code>${TARGET_GROUP_ID}</code></p>
-      </body></html>`);
+      res.end(`<html><body style="${style}"><h1>✅ Bot Connected!</h1><p>Monitoring: <code>${TARGET_GROUP_ID}</code></p></body></html>`);
     } else if (currentQR) {
-      const qrImage = await qrcode.toDataURL(currentQR);
-      res.end(`<html><head><meta http-equiv="refresh" content="30"/></head>
-        <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
-        <h1>📱 Scan QR Code in WhatsApp</h1>
+      const img = await qrcode.toDataURL(currentQR);
+      res.end(`<html><head><meta http-equiv="refresh" content="30"/></head><body style="${style}">
+        <h1>📱 Scan QR in WhatsApp</h1>
         <p>WhatsApp → ⋮ → Linked Devices → Link a Device</p>
-        <img src="${qrImage}" style="width:280px;height:280px;background:#fff;padding:10px;border-radius:8px"/>
+        <img src="${img}" style="width:280px;height:280px;background:#fff;padding:10px;border-radius:8px"/>
         <p><small>Auto-refreshes every 30s</small></p>
       </body></html>`);
     } else {
-      res.end(`<html><head><meta http-equiv="refresh" content="4"/></head>
-        <body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff">
+      res.end(`<html><head><meta http-equiv="refresh" content="4"/></head><body style="${style}">
         <h1>⏳ ${botStatus}</h1>
-        ${lastError ? `<p style="color:red">Last error: ${lastError}</p>` : ""}
+        ${lastError ? `<p style="color:salmon">Error: ${lastError}</p>` : ""}
         <p>Auto-refreshing...</p>
       </body></html>`);
     }
-  } catch(e) {
-    res.end(`<html><body><h1 style="color:red">Server error: ${e.message}</h1></body></html>`);
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => console.log(`🌐 Web server on port ${PORT}`));
+  } catch(e) { res.end(`<h1>Error: ${e.message}</h1>`); }
+}).listen(process.env.PORT || 3000, "0.0.0.0", () =>
+  console.log(`🌐 Web server on port ${process.env.PORT || 3000}`)
+);
 
 // ─────────────────────────────────────────────
-// 🚫 BANNED WORD LISTS
+// 🚫 BANNED LISTS
 // ─────────────────────────────────────────────
 const swearWords = [
   "fuck","f*ck","fuk","fvck","fucc","fuxk","fück","f u c k","feck","frick",
@@ -98,14 +91,14 @@ const tvdWords = [
   "tvdcode","tvdkey","tvdtoken","tvdlogin","tvdsignup",
 ];
 const freyaSkyeWords = [
-  "freya skye","freya_skye","freyaskye","freya.skye","freya-skye","freya skye content","freya skye link","freya skye video","freya skye nude","freya skye leaked",
-  "freya skye onlyfans","freya skye of","freya skye insta","freya skye snap","freya skye tiktok","freya skye twitter","freya skye x","freya skye pics","freya skye photo","freya skye ig",
-  "freyaskye1","freyaskye2","freyaskye3","freyaskyeof","freyaskyesnap","freya s","f skye","fskye","freyask","freya sk",
-  "freyasky","freyaskye_","_freyaskye","freya.s","skye freya","skyefreya","skye_freya","skye.freya","skye-freya","s.freya",
-  "f.skye","fr3ya","fr3ya skye","freya sky3","fr3ya sky3","frya skye","freya skye real","freya skye fake","freya skye hot","freya skye cute",
-  "freya skye acc","freya skye account","freya skye backup","freya skye new","freya skye official","freya skye page","freya skye profile","freya skye handle","freya skye dm","freya skye msg",
-  "freya skye fan","freya skye fans","freya skye fanpage","freya skye fan page","freya skye follow","freya skye sub","freya skye contact","freya skye info","freya skye where","freya skye found",
-  "freya skye back","freya skye here","freya skye check","freya skye look","freya skye see",
+  "freya skye","freya_skye","freyaskye","freya.skye","freya-skye","freya skye link","freya skye video","freya skye nude","freya skye leaked",
+  "freya skye onlyfans","freya skye snap","freya skye tiktok","freya skye twitter","freya skye pics","freya skye photo","freya skye ig",
+  "freyaskye1","freyaskye2","freyaskyeof","freyaskyesnap","f skye","fskye","freyask","freya sk",
+  "freyasky","freyaskye_","_freyaskye","skye freya","skyefreya","skye_freya","skye.freya","skye-freya",
+  "fr3ya","fr3ya skye","freya sky3","fr3ya sky3","frya skye","freya skye real","freya skye fake","freya skye hot",
+  "freya skye acc","freya skye account","freya skye backup","freya skye new","freya skye official","freya skye page",
+  "freya skye fan","freya skye fans","freya skye fanpage","freya skye follow","freya skye sub","freya skye contact",
+  "freya skye back","freya skye here","freya skye check","freya skye look","freya skye see","freya skye dm",
 ];
 const bannedEmojis = [
   "😀","😁","😂","😃","😄","😅","😆","😇","😈","😉","😊","😋","😌","😍","😎","😏","😐","😑","😒","😓",
@@ -155,8 +148,7 @@ const filterWords = [
 ];
 const inappropriateImageKeywords = [
   ...nudeWords,
-  "nsfw","not safe for work","explicit","adult","lewd","hentai","ecchi",
-  "gore","graphic","disturbing","dead body","violence","self harm",
+  "nsfw","not safe for work","explicit","adult","lewd","hentai","ecchi","gore","graphic","disturbing","dead body","violence","self harm",
 ];
 
 const userWarnings = {};
@@ -227,78 +219,79 @@ function applyWarning(sender, violations) {
 }
 
 // ─────────────────────────────────────────────
+// 🗑️ SAFE DELETE — never crashes the bot
+// ─────────────────────────────────────────────
+async function safeDelete(sock, chatId, msgKey, senderName) {
+  // Wait a moment for session to establish then try twice
+  for (let i = 1; i <= 2; i++) {
+    try {
+      await sock.sendMessage(chatId, { delete: msgKey });
+      console.log(`🗑️  Deleted msg from ${senderName}`);
+      return true;
+    } catch (e) {
+      if (i === 1) {
+        await new Promise(r => setTimeout(r, 3000)); // wait 3s, try again
+      } else {
+        console.log(`⚠️  Delete skipped (${e.message}) — warning still sent`);
+      }
+    }
+  }
+  return false;
+}
+
+// ─────────────────────────────────────────────
 // 🤖 BOT
 // ─────────────────────────────────────────────
 async function startBot() {
   try {
     botStatus = "loading auth...";
-    console.log("🔐 Loading auth state...");
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
     console.log("✅ Auth loaded. Has creds:", !!state.creds?.me);
 
-    botStatus = "creating socket...";
-    console.log("🔌 Creating WhatsApp socket...");
-
-    // Fetch latest WA version with fallback
     let waVersion = [2, 3000, 1015901307];
     try {
-      const { version } = await baileys.fetchLatestBaileysVersion();
-      waVersion = version;
+      const r = await baileys.fetchLatestBaileysVersion();
+      waVersion = r.version;
       console.log("📦 WA version:", waVersion.join("."));
     } catch(e) {
-      console.log("⚠️  Using fallback WA version:", waVersion.join("."));
+      console.log("⚠️  Using fallback WA version");
     }
 
+    botStatus = "connecting...";
     const sock = makeWASocket({
       version: waVersion,
       auth: state,
       printQRInTerminal: true,
-      logger: pino({ level: "warn" }),  // warn so we see actual errors
+      logger: pino({ level: "silent" }),
       browser: baileys.Browsers.ubuntu("Chrome"),
       connectTimeoutMs: 30000,
       keepAliveIntervalMs: 15000,
     });
 
-    console.log("✅ Socket created");
-    botStatus = "connecting to WhatsApp...";
-
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
-      console.log("📡 Connection update:", JSON.stringify({
-        connection: update.connection,
-        hasQR: !!update.qr,
-        errorCode: update.lastDisconnect?.error?.output?.statusCode,
-        errorMsg: update.lastDisconnect?.error?.message,
-      }));
-
       const { connection, lastDisconnect, qr } = update;
-
       if (qr) {
         currentQR = qr;
         botStatus = "SCAN QR CODE ↑";
-        console.log("📱 QR ready! Open your Railway URL to scan.");
+        console.log("📱 QR ready — open your Railway URL!");
       }
-
       if (connection === "open") {
         currentQR = null;
         botStatus = "connected";
         lastError = null;
-        console.log("✅ Connected to WhatsApp! Monitoring:", TARGET_GROUP_ID);
+        console.log("✅ Connected! Monitoring:", TARGET_GROUP_ID);
       }
-
       if (connection === "close") {
         const code   = lastDisconnect?.error?.output?.statusCode;
-        const reason = lastDisconnect?.error?.message || "unknown reason";
+        const reason = lastDisconnect?.error?.message || "unknown";
         lastError = `code ${code}: ${reason}`;
         console.log(`❌ Closed — ${lastError}`);
-
         if (code === DisconnectReason.loggedOut) {
           botStatus = "logged out — delete auth_info and redeploy";
-          console.log("🚪 Logged out. You must delete the auth_info folder and redeploy.");
         } else {
-          botStatus = `reconnecting (${lastError})`;
-          console.log("🔄 Will reconnect in 5s...");
+          botStatus = `reconnecting...`;
           setTimeout(startBot, 5000);
         }
       }
@@ -306,62 +299,62 @@ async function startBot() {
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
       for (const msg of messages) {
-        if (!msg.message || msg.key.fromMe) continue;
-        const chatId = msg.key.remoteJid;
-        if (chatId !== TARGET_GROUP_ID) continue;
-
-        const sender     = msg.key.participant || msg.key.remoteJid;
-        const senderNum  = sender.split("@")[0];
-        const senderName = msg.pushName || senderNum;
-        const m          = msg.message;
-
-        const textContent = m.conversation || m.extendedTextMessage?.text || "";
-        const isMedia     = !!(m.imageMessage || m.videoMessage || m.stickerMessage);
-
-        let violations = [];
-        if (textContent) violations = checkText(textContent);
-        if (isMedia)     violations = [...violations, ...checkMedia(msg)];
-        if (!violations.length) continue;
-
         try {
-          await sock.sendMessage(chatId, { delete: msg.key });
-          console.log(`🗑️  Deleted msg from ${senderName}`);
-        } catch (e) {
-          console.error("❌ Delete failed:", e.message);
-        }
+          if (!msg.message || msg.key.fromMe) continue;
+          const chatId = msg.key.remoteJid;
+          if (chatId !== TARGET_GROUP_ID) continue;
 
-        const result = applyWarning(sender, violations);
-        const reason = violations.join(", ");
+          const sender     = msg.key.participant || msg.key.remoteJid;
+          const senderNum  = sender.split("@")[0];
+          const senderName = msg.pushName || senderNum;
+          const m          = msg.message;
 
-        if (result.action === "warn") {
-          console.log(`⚠️  WARN #${result.used} — ${senderName} — ${reason}`);
-          await sock.sendMessage(TARGET_GROUP_ID, {
-            text:
-              `🗑️ *Message deleted.*\n\n` +
-              `⚠️ *Warning #${result.used} for @${senderNum}*\n` +
-              `📌 Violation: ${reason}\n` +
-              `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
-              `❗ Removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
-            mentions: [sender],
-          });
-        }
+          const textContent = m.conversation || m.extendedTextMessage?.text || "";
+          const isMedia     = !!(m.imageMessage || m.videoMessage || m.stickerMessage);
 
-        if (result.action === "ban") {
-          console.log(`⛔ BAN — ${senderName} — ${reason}`);
-          await sock.sendMessage(TARGET_GROUP_ID, {
-            text:
-              `🗑️ *Message deleted.*\n\n` +
-              `⛔ *@${senderNum} has been removed.*\n` +
-              `📌 Final violation: ${reason}\n` +
-              `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
-            mentions: [sender],
-          });
-          try {
-            await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
-            console.log(`✅ Removed ${senderName}`);
-          } catch (e) {
-            console.error("❌ Remove failed:", e.message);
+          let violations = [];
+          if (textContent) violations = checkText(textContent);
+          if (isMedia)     violations = [...violations, ...checkMedia(msg)];
+          if (!violations.length) continue;
+
+          // Delete first — safely, never crashes
+          await safeDelete(sock, chatId, msg.key, senderName);
+
+          const result = applyWarning(sender, violations);
+          const reason = violations.join(", ");
+
+          if (result.action === "warn") {
+            console.log(`⚠️  WARN #${result.used} — ${senderName} — ${reason}`);
+            await sock.sendMessage(TARGET_GROUP_ID, {
+              text:
+                `🗑️ *Message deleted.*\n\n` +
+                `⚠️ *Warning #${result.used} for @${senderNum}*\n` +
+                `📌 Violation: ${reason}\n` +
+                `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
+                `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
+              mentions: [sender],
+            });
           }
+
+          if (result.action === "ban") {
+            console.log(`⛔ BAN — ${senderName} — ${reason}`);
+            await sock.sendMessage(TARGET_GROUP_ID, {
+              text:
+                `🗑️ *Message deleted.*\n\n` +
+                `⛔ *@${senderNum} has been removed.*\n` +
+                `📌 Final violation: ${reason}\n` +
+                `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
+              mentions: [sender],
+            });
+            try {
+              await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
+              console.log(`✅ Removed ${senderName}`);
+            } catch (e) {
+              console.log(`⚠️  Remove failed: ${e.message}`);
+            }
+          }
+        } catch (msgErr) {
+          console.error("⚠️  Message handler error (non-fatal):", msgErr.message);
         }
       }
     });
@@ -369,8 +362,7 @@ async function startBot() {
   } catch (err) {
     lastError = err.message;
     botStatus = `crashed: ${err.message}`;
-    console.error("💥 CRASH:", err);
-    console.log("🔄 Restarting in 5s...");
+    console.error("💥 startBot error:", err.message);
     setTimeout(startBot, 5000);
   }
 }
