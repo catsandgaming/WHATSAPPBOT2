@@ -220,19 +220,31 @@ function applyWarning(sender, violations) {
 }
 
 // ─────────────────────────────────────────────
-// 🛡️ SAFE SEND — retries up to 3x with delay
+// 🛡️ SAFE SEND — asserts sessions then sends
 // ─────────────────────────────────────────────
 async function safeSend(sock, jid, content, label = "message") {
   for (let i = 1; i <= 3; i++) {
     try {
+      // On session errors, force-fetch participant keys first
+      if (i > 1) {
+        try {
+          const meta = await sock.groupMetadata(jid);
+          const ids  = meta.participants.map(p => p.id);
+          await sock.assertSessions(ids, true);
+          await new Promise(r => setTimeout(r, 2000));
+        } catch(se) {
+          console.log("⚠️  assertSessions failed:", se.message);
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
       await sock.sendMessage(jid, content);
+      console.log(`✅ Sent ${label}`);
       return true;
     } catch (e) {
       console.log(`⚠️  Send attempt ${i}/3 failed (${e.message})`);
-      if (i < 3) await new Promise(r => setTimeout(r, 3000 * i));
+      if (i === 3) console.log(`❌ Could not send ${label} after 3 attempts`);
     }
   }
-  console.log(`❌ Could not send ${label} after 3 attempts`);
   return false;
 }
 
