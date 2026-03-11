@@ -152,6 +152,7 @@ const inappropriateImageKeywords = [
 ];
 
 const userWarnings = {};
+let isReady = false;  // prevents acting before sessions are established
 const RULES = `📋 *Group Rules:*
 1️⃣  No swearing
 2️⃣  No nude content
@@ -295,11 +296,18 @@ async function startBot() {
       }
       if (connection === "open") {
         currentQR = null;
-        botStatus = "connected";
         lastError = null;
-        console.log("✅ Connected! Monitoring:", TARGET_GROUP_ID);
+        isReady = false;
+        botStatus = "connected — warming up (30s)...";
+        console.log("✅ Connected! Waiting 30s for sessions to sync...");
+        setTimeout(() => {
+          isReady = true;
+          botStatus = "connected";
+          console.log("✅ Bot is now ready to moderate messages!");
+        }, 30000);
       }
       if (connection === "close") {
+        isReady = false;
         const code   = lastDisconnect?.error?.output?.statusCode;
         const reason = lastDisconnect?.error?.message || "unknown";
         lastError = `code ${code}: ${reason}`;
@@ -317,6 +325,7 @@ async function startBot() {
       for (const msg of messages) {
         try {
           if (!msg.message || msg.key.fromMe) continue;
+          if (!isReady) continue;  // skip until sessions are synced
           const chatId = msg.key.remoteJid;
           if (chatId !== TARGET_GROUP_ID) continue;
 
