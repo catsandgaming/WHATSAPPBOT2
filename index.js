@@ -220,31 +220,20 @@ function applyWarning(sender, violations) {
 }
 
 // ─────────────────────────────────────────────
-// 🛡️ SAFE SEND — asserts sessions then sends
+// 🛡️ SAFE SEND — simple retry, no session magic
 // ─────────────────────────────────────────────
 async function safeSend(sock, jid, content, label = "message") {
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 5; i++) {
     try {
-      // On session errors, force-fetch participant keys first
-      if (i > 1) {
-        try {
-          const meta = await sock.groupMetadata(jid);
-          const ids  = meta.participants.map(p => p.id);
-          await sock.assertSessions(ids, true);
-          await new Promise(r => setTimeout(r, 2000));
-        } catch(se) {
-          console.log("⚠️  assertSessions failed:", se.message);
-          await new Promise(r => setTimeout(r, 3000));
-        }
-      }
       await sock.sendMessage(jid, content);
       console.log(`✅ Sent ${label}`);
       return true;
     } catch (e) {
-      console.log(`⚠️  Send attempt ${i}/3 failed (${e.message})`);
-      if (i === 3) console.log(`❌ Could not send ${label} after 3 attempts`);
+      console.log(`⚠️  Send attempt ${i}/5 failed (${e.message})`);
+      await new Promise(r => setTimeout(r, 5000 * i)); // 5s, 10s, 15s, 20s
     }
   }
+  console.log(`❌ Gave up sending ${label}`);
   return false;
 }
 
@@ -346,14 +335,29 @@ async function startBot() {
       }
     });
 
-    // Fallback: if messaging-history.set never fires, go ready after 60s
+    // Fallback: if messaging-history.set never fires, go ready after 20s
     setTimeout(() => {
       if (!isReady) {
         isReady = true;
-        botStatus = "connected (fallback ready)";
-        console.log("✅ Fallback: bot marked ready after 60s");
+        botStatus = "connected";
+        console.log("✅ Bot ready (fallback 20s)");
       }
-    }, 60000);
+    }, 20000);
+
+    // ── Establish group sender key by sending + deleting a ping message ──
+    sock.ev.on("messaging-history.set", async () => {
+      try {
+        console.log("📡 Establishing group sender key...");
+        const ping = await sock.sendMessage(TARGET_GROUP_ID, { text: "🤖" });
+        if (ping?.key) {
+          await new Promise(r => setTimeout(r, 1000));
+          await sock.sendMessage(TARGET_GROUP_ID, { delete: ping.key });
+        }
+        console.log("✅ Sender key established!");
+      } catch(e) {
+        console.log("⚠️  Sender key ping failed:", e.message);
+      }
+    });
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
       for (const msg of messages) {
