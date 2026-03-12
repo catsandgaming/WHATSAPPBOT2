@@ -1,11 +1,9 @@
 // index.js
-
-// 🛡️ MUST BE FIRST — stops SessionError from killing the process
 import { webcrypto } from "crypto";
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
-process.on("uncaughtException",  (err) => console.error("⚠️ Uncaught:", err.message));
-process.on("unhandledRejection", (r)   => console.error("⚠️ Unhandled:", r?.message || r));
+process.on("uncaughtException",  (e) => console.error("⚠️ Uncaught:", e.message));
+process.on("unhandledRejection", (e) => console.error("⚠️ Rejected:", e?.message || e));
 
 import baileys from "@whiskeysockets/baileys";
 import pino from "pino";
@@ -14,52 +12,36 @@ import http from "http";
 import qrcode from "qrcode";
 dotenv.config();
 
-const makeWASocket         = baileys.default;
+const makeWASocket          = baileys.default;
 const useMultiFileAuthState = baileys.useMultiFileAuthState;
 const DisconnectReason      = baileys.DisconnectReason;
-
-console.log("🤖 Starting EXTREME MOD BOT...");
-console.log("📦 Node:", process.version);
 
 const TARGET_GROUP_ID = process.env.GROUP_ID || "120363425771650708@g.us";
 const MAX_WARNINGS    = 3;
 
-// ─────────────────────────────────────────────
-// 🌐 WEB SERVER
-// ─────────────────────────────────────────────
-let currentQR = null;
-let botStatus = "starting";
-let lastError = null;
-
+// ── Web server (keeps Railway alive + shows QR) ──
+let currentQR = null, botStatus = "starting";
 http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "text/html");
-  const style = "font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff";
-  try {
-    if (botStatus === "connected") {
-      res.end(`<html><body style="${style}"><h1>✅ Bot Connected!</h1><p>Monitoring: <code>${TARGET_GROUP_ID}</code></p></body></html>`);
-    } else if (currentQR) {
-      const img = await qrcode.toDataURL(currentQR);
-      res.end(`<html><head><meta http-equiv="refresh" content="30"/></head><body style="${style}">
-        <h1>📱 Scan QR in WhatsApp</h1>
-        <p>WhatsApp → ⋮ → Linked Devices → Link a Device</p>
-        <img src="${img}" style="width:280px;height:280px;background:#fff;padding:10px;border-radius:8px"/>
-        <p><small>Auto-refreshes every 30s</small></p>
-      </body></html>`);
-    } else {
-      res.end(`<html><head><meta http-equiv="refresh" content="4"/></head><body style="${style}">
-        <h1>⏳ ${botStatus}</h1>
-        ${lastError ? `<p style="color:salmon">Error: ${lastError}</p>` : ""}
-        <p>Auto-refreshing...</p>
-      </body></html>`);
-    }
-  } catch(e) { res.end(`<h1>Error: ${e.message}</h1>`); }
+  const s = "font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff";
+  if (botStatus === "connected") {
+    res.end(`<html><body style="${s}"><h1>✅ Bot Connected!</h1><p>${TARGET_GROUP_ID}</p></body></html>`);
+  } else if (currentQR) {
+    const img = await qrcode.toDataURL(currentQR);
+    res.end(`<html><head><meta http-equiv="refresh" content="30"/></head><body style="${s}">
+      <h1>📱 Scan QR in WhatsApp</h1>
+      <p>WhatsApp → ⋮ → Linked Devices → Link a Device</p>
+      <img src="${img}" style="width:280px;height:280px;background:#fff;padding:10px;border-radius:8px"/>
+    </body></html>`);
+  } else {
+    res.end(`<html><head><meta http-equiv="refresh" content="4"/></head><body style="${s}">
+      <h1>⏳ ${botStatus}</h1></body></html>`);
+  }
 }).listen(process.env.PORT || 3000, "0.0.0.0", () =>
   console.log(`🌐 Web server on port ${process.env.PORT || 3000}`)
 );
 
-// ─────────────────────────────────────────────
-// 🚫 BANNED LISTS
-// ─────────────────────────────────────────────
+// ── Banned lists ──
 const swearWords = [
   "fuck","f*ck","fuk","fvck","fucc","fuxk","fück","f u c k","feck","frick",
   "shit","sh1t","sht","$hit","sh!t","shyt","shiit","shite","s h i t","shitt",
@@ -82,23 +64,20 @@ const nudeWords = [
 ];
 const tvdWords = [
   "tvd","t.v.d","t v d","tvdlink","tvd link","tvd site","tvdsite","tvd url","tvd video","tvd vid",
-  "tvd stream","tvd watch","tvd live","tvd channel","tvd tv","tvd app","tvd download","tvd free","tvd hd","tvd online",
+  "tvd stream","tvd watch","tvd live","tvd channel","tvd app","tvd download","tvd free","tvd hd","tvd online",
   "tvdmovies","tvd hub","tvdhub","tvd4","tvd365","tvdmania","tvd world","tvdworld","tvd net","tvd.net",
   "tvd.com","tvd.tv","tvd.link","tvd.site","tvdmovie","tvdstream","tvdlive","tvdwatch","tvdapp","tvddl",
-  "tvd dl","tvd show","tvd series","tvd episode","tvd cast","tvd full","tvd hd link","tvd free link","tvd watch link","tvd dl link",
+  "tvd dl","tvd series","tvd episode","tvd cast","tvd full","tvd free link","tvd watch link","tvd dl link",
   "tvd123","tvd456","tvd789","tvd2","tvd3","tvdx","tvdz","tvdq","tvdplus","tvd+",
-  "tvdpro","tvdvip","tvdelite","tvdgold","tvdsilver","tvdbronze","tvdpremium","tvdbasic","tvdaccess","tvdpass",
+  "tvdpro","tvdvip","tvdelite","tvdgold","tvdpremium","tvdbasic","tvdaccess","tvdpass",
   "tvdcode","tvdkey","tvdtoken","tvdlogin","tvdsignup",
 ];
 const freyaSkyeWords = [
-  "freya skye","freya_skye","freyaskye","freya.skye","freya-skye","freya skye link","freya skye video","freya skye nude","freya skye leaked",
-  "freya skye onlyfans","freya skye snap","freya skye tiktok","freya skye twitter","freya skye pics","freya skye photo","freya skye ig",
-  "freyaskye1","freyaskye2","freyaskyeof","freyaskyesnap","f skye","fskye","freyask","freya sk",
-  "freyasky","freyaskye_","_freyaskye","skye freya","skyefreya","skye_freya","skye.freya","skye-freya",
-  "fr3ya","fr3ya skye","freya sky3","fr3ya sky3","frya skye","freya skye real","freya skye fake","freya skye hot",
-  "freya skye acc","freya skye account","freya skye backup","freya skye new","freya skye official","freya skye page",
-  "freya skye fan","freya skye fans","freya skye fanpage","freya skye follow","freya skye sub","freya skye contact",
-  "freya skye back","freya skye here","freya skye check","freya skye look","freya skye see","freya skye dm",
+  "freya skye","freya_skye","freyaskye","freya.skye","freya-skye","freya skye link","freya skye video",
+  "freya skye onlyfans","freya skye snap","freya skye tiktok","freya skye twitter","freya skye pics",
+  "freyaskye1","freyaskye2","freyaskyeof","f skye","fskye","freyask","freya sk","freyasky",
+  "skye freya","skyefreya","skye_freya","skye.freya","fr3ya","fr3ya skye","freya sky3",
+  "freya skye acc","freya skye account","freya skye page","freya skye fan","freya skye fans",
 ];
 const bannedEmojis = [
   "😀","😁","😂","😃","😄","😅","😆","😇","😈","😉","😊","😋","😌","😍","😎","😏","😐","😑","😒","😓",
@@ -107,52 +86,40 @@ const bannedEmojis = [
   "🥶","🥺","🤩","🤪","🤫","🤭","🤯","🤬","🤮","🤧","🤠","🤡","🤢","🥸","😸","😿","🙈","🙉","🙊","😻",
 ];
 const labubuWords = [
-  "labubus","labubu","labubs","labu","l@bubus","labubus123","labubus1","labubus2","labubus3","labubusfan",
-  "labubu toy","labubu figure","labubu doll","labubu plush","labubu pop mart","labubu popmart","labubu blind box","labubu series","labubu limited","labubu rare",
-  "labubu drop","labubu release","labubu collab","labubu link","labubu buy","labubu sell","labubu trade","labubu swap","labubu cheap","labubu free",
-  "labubu price","labubu cost","labubu worth","labubu value","labubu fake","labubu real","labubu legit","labubu auth","labubu authentic","labubu og",
-  "labubu new","labubu latest","labubu 2024","labubu 2025","labubu sale","labubu shop","labubu store","labubu site","labubu url","labubu website",
-  "labubu order","labubu shipping","labubu delivery","labubu stock","labubu restock","labubu available","labubu sold","labubu gone","labubu last","labubu final",
-  "labubu pics","labubu photo","labubu pic","labubu image","labubu video","labubu vid","labubu unbox","labubu haul","labubu collection","labubu collector",
-  "labubu fan","labubu fans","labubu fanpage",
+  "labubus","labubu","labubs","labu","l@bubus","labubus123","labubu toy","labubu figure","labubu doll",
+  "labubu plush","labubu pop mart","labubu popmart","labubu blind box","labubu series","labubu limited",
+  "labubu drop","labubu release","labubu buy","labubu sell","labubu trade","labubu price","labubu shop",
+  "labubu store","labubu order","labubu restock","labubu available","labubu collection","labubu collector",
+  "labubu fan","labubu fans","labubu fanpage","labubu video","labubu unbox","labubu haul",
 ];
 const clickbaitWords = [
-  "click here","read more","clickbait","click now","tap here","tap now","click link","link below","link in bio","link in comments",
-  "swipe up","swipe now","watch now","watch this","must watch","must see","must read","you wont believe","you won't believe","unbelievable",
-  "shocking","mind blowing","mind-blowing","omg look","omg watch","omg see","this is insane","this is crazy","gone wrong","gone viral",
-  "viral now","trending now","everyone is talking","nobody talks about","secret revealed","hidden truth","exposed","they don't want you","banned video","deleted video",
-  "limited time","limited offer","act now","don't miss","last chance","final chance","only today","expires soon","offer ends","sale ends",
-  "free gift","win now","you won","you've won","claim now","claim your","get free","free access","free money","free robux",
-  "100% free","totally free","no cost","at no cost","subscribe now","follow now","like now","share now","repost now","forward this",
-  "pass this on","send to everyone","tell your friends","spread the word","breaking news","urgent","alert","warning message","important notice","official notice",
+  "click here","read more","clickbait","click now","tap here","tap now","click link","link below",
+  "link in bio","link in comments","swipe up","must watch","must see","you wont believe",
+  "you won't believe","unbelievable","shocking","mind blowing","omg look","this is insane","gone viral",
+  "viral now","trending now","secret revealed","hidden truth","exposed","banned video","deleted video",
+  "limited time","limited offer","act now","last chance","only today","expires soon","free gift",
+  "win now","you won","claim now","get free","free access","free money","free robux","subscribe now",
+  "breaking news","urgent","important notice","official notice",
 ];
 const snapchatWords = [
-  "snapchat","snap chat","snpchat","snapcht","s n a p","sn@p","$nap","snapchat link","snap link","snapchat url",
-  "snap url","snapchat id","snap id","snapchat user","snap user","snapchat name","snap name","snapchat acc","snap acc","snapchat account",
-  "snap account","snapchat handle","snap handle","snapchat add","snap add","add on snap","add me on snap","add my snap","my snap is","my snapchat is",
-  "heres my snap","here's my snap","dm on snap","dm me snap","snap me","snapchat me","message on snap","snapchat streaks","snap streaks","snap score",
-  "snapchat score","snap streak","snapchat story","snap story","snap stories","snapchat stories","snapchat post","snap post","snapchat pic","snap pic",
-  "snapchat photo","snap photo","snapchat video","snap video","snap vid","snapchat vid","snapchat filter","snap filter","snapchat lens","snap lens",
-  "snapchat map","snap map","snapchat spotlight","snap spotlight","snapchat discover","snap discover","snapchat premium","snap premium","snapchat plus","snap plus",
-  "snapchat+","snap+","snapcode","snap code","sc name","sc user",
+  "snapchat","snap chat","snpchat","snapchat link","snap link","snapchat url","snapchat id","snap id",
+  "snapchat user","snapchat name","snap name","snapchat acc","snap acc","snapchat account",
+  "snapchat add","snap add","add on snap","add me on snap","add my snap","my snap is","my snapchat is",
+  "heres my snap","here's my snap","dm on snap","snap me","snapchat me","snapchat story","snap story",
+  "snapchat photo","snap photo","snapchat video","snap video","snapchat filter","snap filter",
+  "snapchat map","snap map","snapchat premium","snap premium","snapcode","snap code","sc name",
 ];
 const filterWords = [
-  "filter","filters","photo filter","pic filter","image filter","camera filter","face filter","beauty filter","skin filter","light filter",
-  "vsco","vsco filter","vsco edit","vsco preset","vsco cam","vscocam","vsco app","vsco link","vsco feed","vsco grid",
-  "lightroom preset","lr preset","lightroom filter","lr filter","lightroom edit","lr edit","preset","presets","editing preset","photo preset",
-  "facetune","face tune","faceapp","face app","meitu","snow app","b612","ulike","airbrush app","perfect365",
-  "airbrush","airbrush filter","smooth filter","glow filter","blur filter","bokeh filter","hdr filter","vintage filter","retro filter","film filter",
-  "instagram filter","ig filter","tiktok filter","snap filter","facebook filter","fb filter","reels filter","story filter","feed filter","reel filter",
-  "aesthetic filter","tumblr filter","dark filter","warm filter","cool filter","cold filter","sunny filter","moody filter","faded filter","edited photo",
-  "heavily edited","fake photo","filtered photo","photo edit","heavy filter",
-];
-const inappropriateImageKeywords = [
-  ...nudeWords,
-  "nsfw","not safe for work","explicit","adult","lewd","hentai","ecchi","gore","graphic","disturbing","dead body","violence","self harm",
+  "filter","filters","photo filter","pic filter","image filter","camera filter","face filter",
+  "beauty filter","vsco","vsco filter","vsco edit","vsco preset","vscocam","vsco app",
+  "lightroom preset","lr preset","lightroom filter","lr filter","preset","presets","photo preset",
+  "facetune","face tune","faceapp","face app","meitu","snow app","b612","ulike","airbrush app",
+  "airbrush","smooth filter","glow filter","blur filter","vintage filter","retro filter","film filter",
+  "instagram filter","ig filter","tiktok filter","reels filter","aesthetic filter","moody filter",
+  "edited photo","heavily edited","filtered photo","photo edit","heavy filter",
 ];
 
 const userWarnings = {};
-let isReady = false;  // prevents acting before sessions are established
 const RULES = `📋 *Group Rules:*
 1️⃣  No swearing
 2️⃣  No nude content
@@ -163,8 +130,7 @@ const RULES = `📋 *Group Rules:*
 7️⃣  No Labubus
 8️⃣  No clickbaiting
 9️⃣  No Snapchat
-🔟  No filters
-🖼️  No inappropriate images/GIFs`;
+🔟  No filters`;
 
 function checkText(msgText) {
   const text = msgText.toLowerCase();
@@ -193,85 +159,16 @@ function checkText(msgText) {
   return violations;
 }
 
-function checkMedia(msg) {
-  const violations = [];
-  const m = msg.message;
-  const caption = (m.imageMessage?.caption || m.videoMessage?.caption || "").toLowerCase();
-  if (caption) {
-    for (const word of inappropriateImageKeywords) {
-      if (caption.includes(word.toLowerCase())) { violations.push(`bad caption: "${word}"`); break; }
-    }
-  }
-  if (m.imageMessage)                              violations.push("image (auto-deleted)");
-  if (m.videoMessage?.gifPlayback)                 violations.push("GIF (auto-deleted)");
-  if (m.stickerMessage)                            violations.push("sticker (auto-deleted)");
-  if (m.videoMessage && !m.videoMessage.gifPlayback) violations.push("video (auto-deleted)");
-  return violations;
-}
-
 function applyWarning(sender, violations) {
   if (!userWarnings[sender]) userWarnings[sender] = 0;
   userWarnings[sender]++;
   const used = userWarnings[sender];
   const left = MAX_WARNINGS - used;
-  return left > 0
-    ? { action: "warn", violations, used, left }
-    : { action: "ban",  violations, used };
+  return left > 0 ? { action: "warn", used, left } : { action: "ban", used };
 }
 
-// ─────────────────────────────────────────────
-// 🛡️ SAFE SEND — simple retry, no session magic
-// ─────────────────────────────────────────────
-async function safeSend(sock, jid, content, label = "message") {
-  for (let i = 1; i <= 5; i++) {
-    try {
-      await sock.sendMessage(jid, content);
-      console.log(`✅ Sent ${label}`);
-      return true;
-    } catch (e) {
-      console.log(`⚠️  Send attempt ${i}/5 failed (${e.message})`);
-      await new Promise(r => setTimeout(r, 5000 * i)); // 5s, 10s, 15s, 20s
-    }
-  }
-  console.log(`❌ Gave up sending ${label}`);
-  return false;
-}
-
-// ─────────────────────────────────────────────
-// 🗑️ SAFE DELETE — never crashes the bot
-// ─────────────────────────────────────────────
-async function safeDelete(sock, chatId, msgKey, senderName) {
-  for (let i = 1; i <= 2; i++) {
-    try {
-      await sock.sendMessage(chatId, { delete: msgKey });
-      console.log(`🗑️  Deleted msg from ${senderName}`);
-      return true;
-    } catch (e) {
-      if (i === 1) {
-        await new Promise(r => setTimeout(r, 3000));
-      } else {
-        console.log(`⚠️  Delete skipped (${e.message})`);
-      }
-    }
-  }
-  return false;
-}
-
-// ─────────────────────────────────────────────
-// 🤖 BOT
-// ─────────────────────────────────────────────
 async function startBot() {
   try {
-    // If CLEAR_AUTH=true, wipe corrupted session and start fresh
-    if (process.env.CLEAR_AUTH === "true") {
-      const { rmSync, existsSync } = await import("fs");
-      if (existsSync("auth_info")) {
-        rmSync("auth_info", { recursive: true, force: true });
-        console.log("🗑️  Cleared auth_info — fresh QR scan required");
-      }
-    }
-
-    botStatus = "loading auth...";
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
     console.log("✅ Auth loaded. Has creds:", !!state.creds?.me);
 
@@ -280,150 +177,91 @@ async function startBot() {
       const r = await baileys.fetchLatestBaileysVersion();
       waVersion = r.version;
       console.log("📦 WA version:", waVersion.join("."));
-    } catch(e) {
-      console.log("⚠️  Using fallback WA version");
-    }
+    } catch(e) { console.log("⚠️  Using fallback WA version"); }
 
-    botStatus = "connecting...";
     const sock = makeWASocket({
       version: waVersion,
       auth: state,
       printQRInTerminal: true,
       logger: pino({ level: "silent" }),
       browser: baileys.Browsers.ubuntu("Chrome"),
-      connectTimeoutMs: 30000,
-      keepAliveIntervalMs: 15000,
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 10000,
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("connection.update", (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      if (qr) {
-        currentQR = qr;
-        botStatus = "SCAN QR CODE ↑";
-        console.log("📱 QR ready — open your Railway URL!");
-      }
+    sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+      if (qr) { currentQR = qr; botStatus = "SCAN QR ↑"; console.log("📱 Open Railway URL to scan QR!"); }
       if (connection === "open") {
-        currentQR = null;
-        lastError = null;
-        isReady = false;
-        botStatus = "connected — syncing...";
-        console.log("✅ Connected! Waiting for WhatsApp to finish syncing...");
+        currentQR = null; botStatus = "connected";
+        console.log("✅ Connected! Monitoring:", TARGET_GROUP_ID);
       }
       if (connection === "close") {
-        isReady = false;
-        const code   = lastDisconnect?.error?.output?.statusCode;
-        const reason = lastDisconnect?.error?.message || "unknown";
-        lastError = `code ${code}: ${reason}`;
-        console.log(`❌ Closed — ${lastError}`);
+        const code = lastDisconnect?.error?.output?.statusCode;
+        console.log(`❌ Closed — code ${code}`);
+        botStatus = "reconnecting...";
         if (code === DisconnectReason.loggedOut) {
-          botStatus = "logged out — delete auth_info and redeploy";
+          botStatus = "logged out";
+          console.log("🚪 Logged out — delete auth_info and redeploy");
         } else {
-          botStatus = `reconnecting...`;
           setTimeout(startBot, 5000);
         }
       }
     });
 
-    // Fire once WhatsApp has fully synced — safe to send messages after this
-    sock.ev.on("messaging-history.set", () => {
-      if (!isReady) {
-        isReady = true;
-        botStatus = "connected";
-        console.log("✅ WhatsApp sync complete — bot is ready to moderate!");
-      }
-    });
-
-    // Fallback: if messaging-history.set never fires, go ready after 20s
-    setTimeout(() => {
-      if (!isReady) {
-        isReady = true;
-        botStatus = "connected";
-        console.log("✅ Bot ready (fallback 20s)");
-      }
-    }, 20000);
-
-    // ── Establish group sender key by sending + deleting a ping message ──
-    sock.ev.on("messaging-history.set", async () => {
-      try {
-        console.log("📡 Establishing group sender key...");
-        const ping = await sock.sendMessage(TARGET_GROUP_ID, { text: "🤖" });
-        if (ping?.key) {
-          await new Promise(r => setTimeout(r, 1000));
-          await sock.sendMessage(TARGET_GROUP_ID, { delete: ping.key });
-        }
-        console.log("✅ Sender key established!");
-      } catch(e) {
-        console.log("⚠️  Sender key ping failed:", e.message);
-      }
-    });
-
-    sock.ev.on("messages.upsert", async ({ messages }) => {
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return;
       for (const msg of messages) {
         try {
           if (!msg.message || msg.key.fromMe) continue;
-          if (!isReady) continue;  // skip until sessions are synced
-          const chatId = msg.key.remoteJid;
-          if (chatId !== TARGET_GROUP_ID) continue;
+          if (msg.key.remoteJid !== TARGET_GROUP_ID) continue;
 
-          const sender     = msg.key.participant || msg.key.remoteJid;
-          const senderNum  = sender.split("@")[0];
-          const senderName = msg.pushName || senderNum;
-          const m          = msg.message;
+          const sender    = msg.key.participant || msg.key.remoteJid;
+          const senderNum = sender.split("@")[0];
+          const name      = msg.pushName || senderNum;
+          const m         = msg.message;
+          const text      = m.conversation || m.extendedTextMessage?.text || "";
+          const isMedia   = !!(m.imageMessage || m.videoMessage || m.stickerMessage);
 
-          const textContent = m.conversation || m.extendedTextMessage?.text || "";
-          const isMedia     = !!(m.imageMessage || m.videoMessage || m.stickerMessage);
-
-          let violations = [];
-          if (textContent) violations = checkText(textContent);
-          if (isMedia)     violations = [...violations, ...checkMedia(msg)];
+          const violations = [];
+          if (text)    violations.push(...checkText(text));
+          if (isMedia) violations.push("media sent");
           if (!violations.length) continue;
-
-          // Delete first — safely, never crashes
-          await safeDelete(sock, chatId, msg.key, senderName);
 
           const result = applyWarning(sender, violations);
           const reason = violations.join(", ");
+          console.log(`${result.action === "ban" ? "⛔ BAN" : "⚠️  WARN #" + result.used} — ${name} — ${reason}`);
 
           if (result.action === "warn") {
-            console.log(`⚠️  WARN #${result.used} — ${senderName} — ${reason}`);
-            await safeSend(sock, TARGET_GROUP_ID, {
+            await sock.sendMessage(TARGET_GROUP_ID, {
               text:
-                `🗑️ *Message deleted.*\n\n` +
-                `⚠️ *Warning #${result.used} for @${senderNum}*\n` +
-                `📌 Violation: ${reason}\n` +
-                `🔢 Warnings: ${result.used}/${MAX_WARNINGS}\n` +
-                `❗ You will be removed at ${MAX_WARNINGS} warnings.\n\n` + RULES,
-            }, "warning");
+                `⚠️ Warning #${result.used}/${MAX_WARNINGS} — @${senderNum}\n` +
+                `📌 Reason: ${reason}\n` +
+                `❗ You will be removed after ${MAX_WARNINGS} warnings.\n\n` + RULES,
+            });
           }
 
           if (result.action === "ban") {
-            console.log(`⛔ BAN — ${senderName} — ${reason}`);
-            await safeSend(sock, TARGET_GROUP_ID, {
+            await sock.sendMessage(TARGET_GROUP_ID, {
               text:
-                `🗑️ *Message deleted.*\n\n` +
-                `⛔ *@${senderNum} has been removed.*\n` +
-                `📌 Final violation: ${reason}\n` +
+                `⛔ @${senderNum} has been removed from the group.\n` +
+                `📌 Reason: ${reason}\n` +
                 `🔢 Used all ${MAX_WARNINGS}/${MAX_WARNINGS} warnings.`,
-            }, "ban notice");
+            });
             try {
               await sock.groupParticipantsUpdate(TARGET_GROUP_ID, [sender], "remove");
-              console.log(`✅ Removed ${senderName}`);
-            } catch (e) {
-              console.log(`⚠️  Remove failed: ${e.message}`);
-            }
+              console.log(`✅ Removed ${name}`);
+            } catch(e) { console.log("⚠️  Remove failed:", e.message); }
           }
-        } catch (msgErr) {
-          console.error("⚠️  Message handler error (non-fatal):", msgErr.message);
-        }
+
+        } catch(e) { console.log("⚠️  Handler error:", e.message); }
       }
     });
 
-  } catch (err) {
-    lastError = err.message;
-    botStatus = `crashed: ${err.message}`;
-    console.error("💥 startBot error:", err.message);
+  } catch(e) {
+    console.error("💥 Crash:", e.message);
+    botStatus = "crashed";
     setTimeout(startBot, 5000);
   }
 }
